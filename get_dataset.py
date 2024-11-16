@@ -44,11 +44,12 @@ def read_tfrecord_file(file_path, split='train', pickapic=None):
     i = 0
     now_dir = os.path.dirname(os.path.abspath(__file__))
     target_dir_path = os.path.join(now_dir, split)
+    data_dir_path = os.path.join(target, 'data')
     lookup_table = build_lookup_table(pickapic, split)
 
     processed_data = list()
     for raw_record in tqdm(raw_dataset):
-        save_path = os.path.join(target_dir_path, str(i))
+        save_path = os.path.join(data_dir_path, str(i))
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         example = parse_tfrecord(raw_record)
@@ -105,4 +106,4 @@ full_dataset = DatasetDict({
     "dev": dev_dataset
 })
 
-full_dataset.save_to_disk('./rich_human_feedback_dataset')
+full_dataset.save_to_disk('./data/rich_human_feedback_dataset')
