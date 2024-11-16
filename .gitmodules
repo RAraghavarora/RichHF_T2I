@@ -1,0 +1,3 @@
+[submodule "richhf-18k"]
+	path = richhf-18k
+	url = git@github.com:google-research-datasets/richhf-18k.git
