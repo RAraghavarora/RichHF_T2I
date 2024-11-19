@@ -3,3 +3,5 @@ datasets==3.1.0
 tensorflow==2.18.0
 numpy==1.26.0
 transformers==4.46.3
+scipy==1.14.1
+wandb==0.18.7
