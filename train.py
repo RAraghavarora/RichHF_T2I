@@ -1,4 +1,4 @@
-from datasets import load_from_disk
+from datasets import load_from_disk, load_dataset
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -142,7 +142,11 @@ wandb.init(entity='appliedmachinelearning', project="aesthetic-score-model", con
     })
 # Initialize model and start training
 model = AestheticScoreModel()
-rhf_dataset_dict = load_from_disk('./rich_human_feedback_dataset')
+try:
+    rhf_dataset_dict = load_from_disk('./rich_human_feedback_dataset')
+except FileNotFoundError:
+    rhf_dataset_dict = load_dataset('RAraghavarora/RichHumanFeedback')
+
 train_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='train')
 val_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='dev')
 train_model(model, train_loader, val_loader)
