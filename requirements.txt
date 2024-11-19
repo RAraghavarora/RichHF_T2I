@@ -1,0 +1,5 @@
+# conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+datasets==3.1.0
+tensorflow==2.18.0
+numpy==1.26.0
+transformers==4.46.3
