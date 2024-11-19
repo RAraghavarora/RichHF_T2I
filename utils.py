@@ -2,6 +2,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 import io
 
+
 def bytes_to_tensor(image_bytes):
     """Convert image bytes to normalized tensor suitable for ViT"""
     image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
