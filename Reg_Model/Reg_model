@@ -1,0 +1,137 @@
+import tensorflow as tf
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.svm import SVR
+from sklearn.metrics import mean_squared_error, r2_score
+
+# Function to parse the original dataset
+def parse_original_tfrecord(example):
+    feature_description = {
+        'filename': tf.io.FixedLenFeature([], tf.string),  # Filename as a key
+        'aesthetics_score': tf.io.FixedLenFeature([], tf.int64),
+        'artifact_score': tf.io.FixedLenFeature([], tf.int64),
+        'misalignment_score': tf.io.FixedLenFeature([], tf.int64),
+        'overall_score': tf.io.FixedLenFeature([], tf.int64)
+    }
+    parsed_example = tf.io.parse_single_example(example, feature_description)
+    return {
+        'filename': parsed_example['filename'],
+        'labels': tf.stack([
+            parsed_example['aesthetics_score'],
+            parsed_example['artifact_score'],
+            parsed_example['misalignment_score'],
+            parsed_example['overall_score']
+        ])
+    }
+
+# Function to parse the self-attention TFRecord dataset
+def parse_attention_tfrecord(example):
+    feature_description = {
+        'filename': tf.io.FixedLenFeature([], tf.string),  # Filename as a key
+        'self_attention': tf.io.FixedLenFeature([1024 * 2048], tf.float32)  # Flattened self-attention matrix
+    }
+    parsed_example = tf.io.parse_single_example(example, feature_description)
+    return {
+        'filename': parsed_example['filename'],
+        'self_attention': parsed_example['self_attention']
+    }
+
+# Load both TFRecord datasets
+original_tfrecord_file = "Rand1K.tfrecord"
+attention_tfrecord_file = "Rand_atten1K.tfrecord"
+
+original_dataset = tf.data.TFRecordDataset(original_tfrecord_file).map(parse_original_tfrecord)
+attention_dataset = tf.data.TFRecordDataset(attention_tfrecord_file).map(parse_attention_tfrecord)
+
+# Convert both datasets to dictionaries keyed by filename
+original_data_dict = {item['filename'].numpy().decode(): {
+    'labels': item['labels'].numpy()
+} for item in original_dataset}
+
+attention_data_dict = {item['filename'].numpy().decode(): item['self_attention'].numpy() for item in attention_dataset}
+
+# Merge datasets by filename
+merged_data = []
+for filename, original_data in original_data_dict.items():
+    if filename in attention_data_dict:  
+        merged_data.append({
+            'features': attention_data_dict[filename],
+            'labels': original_data['labels']
+        })
+
+# Convert merged data to NumPy arrays
+X = np.array([item['features'] for item in merged_data])
+y = np.array([item['labels'] for item in merged_data])
+
+# Train-validation-test split
+X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, random_state=42)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.6667, random_state=42)  # 10% val, 20% test
+
+# Define models and parameters
+models = {
+    "LinearRegression": LinearRegression(),
+    "Ridge": Ridge(),
+    "Lasso": Lasso(),
+    "SVM": SVR()
+}
+
+params = {
+    "Ridge": {'alpha': np.logspace(-6, 6, 13)},
+    "Lasso": {'alpha': np.logspace(-6, 6, 13)},
+    "SVM": {'C': [0.1, 1, 10], 'epsilon': [0.01, 0.1, 1]}
+}
+
+# Training and evaluation
+results = {}
+for model_name, model in models.items():
+    print(f"Training {model_name}...")
+    if model_name in params:
+        grid = GridSearchCV(model, params[model_name], cv=3, scoring='neg_mean_squared_error', verbose=0)
+        grid.fit(X_train, y_train)
+        best_model = grid.best_estimator_
+        print(f"Best Params for {model_name}: {grid.best_params_}")
+    else:
+        model.fit(X_train, y_train)
+        best_model = model
+
+    # Evaluate on train, validation, and test sets
+    y_train_pred = best_model.predict(X_train)
+    y_val_pred = best_model.predict(X_val)
+    y_test_pred = best_model.predict(X_test)
+
+    train_mse = mean_squared_error(y_train, y_train_pred)
+    val_mse = mean_squared_error(y_val, y_val_pred)
+    test_mse = mean_squared_error(y_test, y_test_pred)
+
+    train_r2 = r2_score(y_train, y_train_pred)
+    val_r2 = r2_score(y_val, y_val_pred)
+    test_r2 = r2_score(y_test, y_test_pred)
+
+    # Store results
+    results[model_name] = {
+        "train_mse": train_mse,
+        "val_mse": val_mse,
+        "test_mse": test_mse,
+        "train_r2": train_r2,
+        "val_r2": val_r2,
+        "test_r2": test_r2
+    }
+
+    print(f"{model_name} Results:")
+    print(f"Train MSE: {train_mse:.4f}, R2: {train_r2:.4f}")
+    print(f"Val MSE: {val_mse:.4f}, R2: {val_r2:.4f}")
+    print(f"Test MSE: {test_mse:.4f}, R2: {test_r2:.4f}\n")
+
+# Plot errors for each model
+plt.figure(figsize=(12, 8))
+for model_name, res in results.items():
+    plt.plot(["Train", "Validation", "Test"], [res["train_mse"], res["val_mse"], res["test_mse"]], marker='o', label=model_name)
+
+plt.title("MSE Comparison Across Models")
+plt.xlabel("Dataset Split")
+plt.ylabel("Mean Squared Error")
+plt.legend()
+plt.show()
