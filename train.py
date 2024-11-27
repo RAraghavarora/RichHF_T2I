@@ -2,13 +2,15 @@ from datasets import load_from_disk, load_dataset
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 import math
 from models import AestheticScoreModel
-from utils import bytes_to_tensor
+from utils import bytes_to_tensor, tokenize_captions
 from scipy import stats
 import wandb
 import numpy as np
+from transformers import AutoTokenizer
+
 
 def get_lr(step, warmup_steps, base_lr):
     if step < warmup_steps:
@@ -59,10 +61,11 @@ def train_model(model, train_loader, val_loader, num_iterations=20000, warmup_st
             if iteration >= num_iterations:
                 break
 
-            images = torch.stack([bytes_to_tensor(item) for item in batch['image']]).to(device)
-            captions = batch['caption']
+            # images = torch.stack([bytes_to_tensor(item) for item in batch['image']]).to(device)
+            images = batch['image'].to(device)
+            captions = batch['caption'].to(device)
             # images = torch.stack([bytes_to_tensor(item['image']) for item in batch]).to(device)
-            aesthetic_scores = torch.tensor([item for item in batch['aesthetics_score']], dtype=torch.float32).to(device)
+            aesthetic_scores = batch['aesthetics_score'].to(device)
             
             # Update learning rate
             lr = get_lr(iteration + 1, warmup_steps, base_lr)
@@ -77,6 +80,8 @@ def train_model(model, train_loader, val_loader, num_iterations=20000, warmup_st
             train_srcc = stats.spearmanr(predicted_scores.detach().cpu().numpy(), aesthetic_scores.cpu().numpy())[0]
             train_plcc = stats.pearsonr(predicted_scores.detach().cpu().numpy(), aesthetic_scores.cpu().numpy())[0]
             if np.nan in train_plcc:
+                print("STOPPED")
+                import pdb; pdb.set_trace()
                 train_plcc=-1
             else:
                 train_plcc = train_plcc.sum()/train_plcc.shape[0]
@@ -108,17 +113,43 @@ def train_model(model, train_loader, val_loader, num_iterations=20000, warmup_st
 
             iteration += 1
 
-# Usage example:
-def create_dataloader(dataset, batch_size=256, split='train'):
+
+class CustomDataset(Dataset):
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        item = self.dataset[idx]
+        image = bytes_to_tensor(item['image'])
+        tokenizer = AutoTokenizer.from_pretrained('t5-base')
+        caption = tokenizer(item['caption'], return_tensors='pt', padding='max_length', truncation=True, max_length=512)
+        return {
+            'image': image,
+            'caption': caption['input_ids'].squeeze(),
+            # 'attention_mask': caption['attention_mask'].squeeze(),
+            # 'artifact_score': torch.tensor(item['artifact_score']),
+            # 'misalignment_map': torch.tensor(item['misalignment_map']),
+            # 'misalignment_score': torch.tensor(item['misalignment_score']),
+            # 'overall_score': torch.tensor(item['overall_score']),
+            'aesthetics_score': torch.tensor(item['aesthetics_score']),
+            # 'artifact_map': torch.tensor(item['artifact_map']),
+            # 'prompt_misalignment_label': torch.tensor(item['prompt_misalignment_label']),
+            # 'filename': item['filename']
+        }
+
+
+def create_dataloader(dataset, split, batch_size=32, shuffle=True):
+    custom_dataset = CustomDataset(dataset[split])
     return DataLoader(
-        dataset[split],
+        custom_dataset,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=shuffle,
         num_workers=4,
         pin_memory=True
     )
-
-
 
 
 def test_model(model, test_loader):
@@ -149,8 +180,9 @@ except FileNotFoundError:
 
 train_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='train')
 val_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='dev')
+test_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='test')
+print("loaded")
 train_model(model, train_loader, val_loader)
 
-test_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='test')
 plcc, srcc = test_model(model, test_loader)
 wandb.finish()

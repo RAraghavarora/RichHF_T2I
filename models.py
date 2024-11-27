@@ -88,20 +88,75 @@ class ScorePredictor(nn.Module):
         x = self.dense_layers(x)
         return x
 
+# class AestheticScoreModel(nn.Module):
+#     def __init__(self):
+#         super().__init__()
+#         self.vit_encoder = ViTModel.from_pretrained(
+#             "google/vit-base-patch16-224-in21k",
+#             hidden_size=768,
+#             num_hidden_layers=12,
+#             num_attention_heads=12,
+#             intermediate_size=3072,
+#         )
+#         t5_encoder = T5EncoderModel.from_pretrained(
+#             "t5-base",
+#             hidden_size=768,
+#             num_hidden_layers=12,
+#             num_attention_heads=12,
+#             intermediate_size=2048,
+#         )
+#         # self.vit = ViTModel.from_pretrained('google/vit-base-patch16-224')
+#         # self.text_encoder = TextEncoder()
+#         self.fusion_model = SelfAttentionFusion()
+#         self.score_predictor = ScorePredictor(input_dim=768)  # ViT hidden dim is 768
+        
+#     def forward(self, images, text):
+#         image_tokens = self.vit(images).last_hidden_state  # [batch_size, num_patches, hidden_dim]
+#         # x = vit_output.transpose(1, 2) #TODO Needed?
+#         # Reshape for conv1d: [batch_size, hidden_dim, num_patches]
+
+#         text_tokens = self.text_encoder(text)
+#         import pdb; pdb.set_trace()
+#         fused_features = self.fusion_model(image_tokens, text_tokens)
+#         score = self.score_predictor(fused_features)
+#         return score
+
 class AestheticScoreModel(nn.Module):
     def __init__(self):
-        super().__init__()
-        self.vit = ViTModel.from_pretrained('google/vit-base-patch16-224')
-        self.text_encoder = TextEncoder()
-        self.fusion_model = SelfAttentionFusion()
-        self.score_predictor = ScorePredictor(input_dim=768)  # ViT hidden dim is 768
+        super(AestheticScoreModel, self).__init__()
+        self.vit_encoder = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
+        self.t5_encoder = T5EncoderModel.from_pretrained('t5-base')
         
-    def forward(self, images, text):
-        image_tokens = self.vit(images).last_hidden_state  # [batch_size, num_patches, hidden_dim]
-        # x = vit_output.transpose(1, 2) #TODO Needed?
-        # Reshape for conv1d: [batch_size, hidden_dim, num_patches]
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(768, 384, kernel_size=2, stride=1),
+            nn.LayerNorm([384, 1, 1]),
+            nn.ReLU(),
+            nn.Conv2d(384, 128, kernel_size=2, stride=1),
+            nn.LayerNorm([128, 1, 1]),
+            nn.ReLU(),
+            nn.Conv2d(128, 64, kernel_size=2, stride=1),
+            nn.LayerNorm([64, 1, 1]),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=2, stride=1),
+            nn.LayerNorm([64, 1, 1]),
+            nn.ReLU()
+        )
+        
+        self.dense_layers = nn.Sequential(
+            nn.Linear(64, 2048),
+            nn.ReLU(),
+            nn.Linear(2048, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1),
+            nn.Sigmoid()
+        )
 
-        text_tokens = self.text_encoder(text)
-        fused_features = self.fusion_model(image_tokens, text_tokens)
-        score = self.score_predictor(fused_features)
+    def forward(self, image, text):
+        image_features = self.vit_encoder(image).last_hidden_state
+        text_features = self.t5_encoder(input_ids=text).last_hidden_state
+        combined_features = torch.cat((image_features, text_features), dim=1)
+        conv_output = self.conv_layers(combined_features.unsqueeze(2).unsqueeze(3))
+        conv_output = conv_output.view(conv_output.size(0), -1)
+        score = self.dense_layers(conv_output)
         return score
+

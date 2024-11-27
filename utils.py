@@ -15,3 +15,12 @@ def bytes_to_tensor(image_bytes):
     ])
 
     return transform(image)
+
+def tokenize_captions(captions, tokenizer, max_length=77):
+    return tokenizer(
+        captions,
+        padding='max_length',
+        truncation=True,
+        max_length=max_length,
+        return_tensors="pt"
+    )
