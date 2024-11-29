@@ -5,17 +5,12 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 import math
 from models import AestheticScoreModel
-from utils import bytes_to_tensor, tokenize_captions
+from utils import bytes_to_tensor, tokenize_captions, get_lr
 from scipy import stats
 import wandb
 import numpy as np
 from transformers import AutoTokenizer
 
-
-def get_lr(step, warmup_steps, base_lr):
-    if step < warmup_steps:
-        return base_lr * step / warmup_steps
-    return base_lr * math.sqrt(warmup_steps / step)
 
 def evaluate_model(model, data_loader, device):
     model.eval()
@@ -24,13 +19,13 @@ def evaluate_model(model, data_loader, device):
     
     with torch.no_grad():
         for batch in data_loader:
-            images = torch.stack([bytes_to_tensor(item) for item in batch['image']]).to(device)
-            captions = batch['caption']
-            aesthetic_scores = torch.tensor([item for item in batch['aesthetics_score']], dtype=torch.float32).to(device)
+            images = batch['image'].to(device)
+            captions = batch['caption'].to(device)
+            aesthetic_scores = batch['aesthetics_score'].to(device)
             
-            predicted_scores = model(images, captions)
+            predicted_scores = model(images, captions).squeeze(1)
             
-            all_predictions.extend(predicted_scores.squeeze(1).cpu().numpy())
+            all_predictions.extend(predicted_scores.cpu().numpy())
             all_targets.extend(aesthetic_scores.cpu().numpy())
     
     all_predictions = np.array(all_predictions)
@@ -42,7 +37,7 @@ def evaluate_model(model, data_loader, device):
     
     return plcc, srcc, mse
 
-def train_model(model, train_loader, val_loader, num_iterations=20000, warmup_steps=2000, base_lr=0.015):
+def train_model(model, train_loader, val_loader, num_iterations=20000, warmup_steps=1000, base_lr=0.001):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     
@@ -53,8 +48,6 @@ def train_model(model, train_loader, val_loader, num_iterations=20000, warmup_st
     iteration = 0
     best_val_plcc = -1
     eval_every = 10
-
-
 
     while iteration < num_iterations:
         for batch in train_loader:
@@ -73,18 +66,18 @@ def train_model(model, train_loader, val_loader, num_iterations=20000, warmup_st
                 param_group['lr'] = lr
             
             optimizer.zero_grad()
-            predicted_scores = model(images, captions)
-            loss = criterion(predicted_scores.squeeze(1), aesthetic_scores)
+            predicted_scores = model(images, captions).squeeze(1)
+            loss = criterion(predicted_scores, aesthetic_scores)
             loss.backward()
             optimizer.step()
             train_srcc = stats.spearmanr(predicted_scores.detach().cpu().numpy(), aesthetic_scores.cpu().numpy())[0]
             train_plcc = stats.pearsonr(predicted_scores.detach().cpu().numpy(), aesthetic_scores.cpu().numpy())[0]
-            if np.nan in train_plcc:
-                print("STOPPED")
+
+            if np.isnan(train_plcc) or np.isnan(train_srcc):
+                print("NaN discovered")
                 import pdb; pdb.set_trace()
-                train_plcc=-1
-            else:
-                train_plcc = train_plcc.sum()/train_plcc.shape[0]
+                print("NaN discovered")
+
             wandb.log({
                 "train/loss": loss.item(), 
                 "learning_rate": lr,
@@ -125,7 +118,7 @@ class CustomDataset(Dataset):
         item = self.dataset[idx]
         image = bytes_to_tensor(item['image'])
         tokenizer = AutoTokenizer.from_pretrained('t5-base')
-        caption = tokenizer(item['caption'], return_tensors='pt', padding='max_length', truncation=True, max_length=512)
+        caption = tokenizer(item['caption'], return_tensors='pt', padding='max_length', truncation=True, max_length=50)
         return {
             'image': image,
             'caption': caption['input_ids'].squeeze(),
@@ -147,7 +140,7 @@ def create_dataloader(dataset, split, batch_size=32, shuffle=True):
         custom_dataset,
         batch_size=batch_size,
         shuffle=shuffle,
-        num_workers=4,
+        num_workers=16,
         pin_memory=True
     )
 
@@ -178,9 +171,9 @@ try:
 except FileNotFoundError:
     rhf_dataset_dict = load_dataset('RAraghavarora/RichHumanFeedback')
 
-train_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='train')
-val_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='dev')
-test_loader = create_dataloader(rhf_dataset_dict, batch_size=256, split='test')
+train_loader = create_dataloader(rhf_dataset_dict, batch_size=32, split='train')
+val_loader = create_dataloader(rhf_dataset_dict, batch_size=8, split='dev')
+test_loader = create_dataloader(rhf_dataset_dict, batch_size=32, split='test')
 print("loaded")
 train_model(model, train_loader, val_loader)
 

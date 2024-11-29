@@ -24,3 +24,9 @@ def tokenize_captions(captions, tokenizer, max_length=77):
         max_length=max_length,
         return_tensors="pt"
     )
+
+
+def get_lr(step, warmup_steps, base_lr):
+    if step < warmup_steps:
+        return base_lr * step / warmup_steps
+    return base_lr * math.sqrt(warmup_steps / step)
