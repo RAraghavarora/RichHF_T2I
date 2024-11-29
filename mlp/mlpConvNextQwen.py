@@ -16,23 +16,23 @@ rhf_dataset_train = load_dataset('RAraghavarora/RichHumanFeedback', split='train
 rhf_dataset_val = load_dataset('RAraghavarora/RichHumanFeedback', split='dev')
 rhf_dataset_test = load_dataset('RAraghavarora/RichHumanFeedback', split='test')
 
-print("loaded rhf dataset")
+print('loaded rhf dataset')
 
 convnext_dataset_train = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_train')['features']
 convnext_dataset_val = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_dev')['features']
 convnext_dataset_test = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_test')['features']
 
-print('loaded ConvNext dataset')
+print("loaded ConvNext dataset")
 
 textembed_dataset_train = load_dataset('appliedml2024/text_embedding', split='train')
 textembed_dataset_val = load_dataset('appliedml2024/text_embedding', split='dev')
 textembed_dataset_test = load_dataset('appliedml2024/text_embedding', split='test')
 
-bert_dataset_train = textembed_dataset_train['BERT_text_embedding']
-bert_dataset_val = textembed_dataset_val['BERT_text_embedding']
-bert_dataset_test = textembed_dataset_test['BERT_text_embedding']
+bert_dataset_train = textembed_dataset_train['Qwen2_text_embedding']
+bert_dataset_val = textembed_dataset_val['Qwen2_text_embedding']
+bert_dataset_test = textembed_dataset_test['Qwen2_text_embedding']
 
-print('loaded BERT text embeddings')
+print('loaded Qwen text embeddings')
 
 rhf_artifact_train = rhf_dataset_train['overall_score']
 rhf_artifact_val = rhf_dataset_val['overall_score']
@@ -59,6 +59,8 @@ for i in range(0,len(rhf_artifact_train)):
 
 print('dataset concatenated')
 
+
+
 combined_dataset_train = torch.Tensor(combined_dataset_train)
 combined_dataset_val = torch.Tensor(combined_dataset_val)
 combined_dataset_test = torch.Tensor(combined_dataset_test)
@@ -78,26 +80,25 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 class MLP(nn.Module):
     def __init__(self):
-        super(MLP, self).__init__()
-        self.fc1 = nn.Linear(2560,1706) # TODO sweep hidden layer num
-        self.lnorm1 = nn.LayerNorm(1706)
+        self.fc1 = nn.Linear(5120,3413) # TODO sweep hidden layer num
+        self.lnorm1 = nn.LayerNorm(3413)
         self.relu1 = nn.ReLU()
-        self.fc2 = nn.Linear(1706,1135)
-        self.lnorm2 = nn.LayerNorm(1135)
+        self.fc2 = nn.Linear(3413,2275)
+        self.lnorm2 = nn.LayerNorm(2275)
         self.relu2 = nn.ReLU()
-        self.fc3 = nn.Linear(1135,757)
-        self.lnorm3 = nn.LayerNorm(757)
+        self.fc3 = nn.Linear(2275,1516)
+        self.lnorm3 = nn.LayerNorm(1516)
         self.relu3 = nn.ReLU()
-        self.fc4 = nn.Linear(757,505)
-        self.lnorm4 = nn.LayerNorm(505)
+        self.fc4 = nn.Linear(1516,1010)
+        self.lnorm4 = nn.LayerNorm(1010)
         self.relu4 = nn.ReLU()
-        self.fc5 = nn.Linear(505,336)
-        self.lnorm5 = nn.LayerNorm(336)
+        self.fc5 = nn.Linear(1010,673)
+        self.lnorm5 = nn.LayerNorm(673)
         self.relu5 = nn.ReLU()
-        self.fc6 = nn.Linear(336,224)
-        self.lnorm6 = nn.LayerNorm(224)
+        self.fc6 = nn.Linear(673,449)
+        self.lnorm6 = nn.LayerNorm(449)
         self.relu6 = nn.ReLU()
-        self.fc7 = nn.Linear(224,1)
+        self.fc7 = nn.Linear(449,1)
         ### END CODE ###
 
     def forward(self, inp):

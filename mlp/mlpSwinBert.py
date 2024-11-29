@@ -18,11 +18,11 @@ rhf_dataset_test = load_dataset('RAraghavarora/RichHumanFeedback', split='test')
 
 print("loaded rhf dataset")
 
-convnext_dataset_train = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_train')['features']
-convnext_dataset_val = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_dev')['features']
-convnext_dataset_test = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_test')['features']
+convnext_dataset_train = load_dataset('appliedml2024/Vision_SwinV2', split='SwinV2_train')['features']
+convnext_dataset_val = load_dataset('appliedml2024/Vision_SwinV2', split='SwinV2_dev')['features']
+convnext_dataset_test = load_dataset('appliedml2024/Vision_SwinV2', split='SwinV2_test')['features']
 
-print('loaded ConvNext dataset')
+print('loaded SwinV2 dataset')
 
 textembed_dataset_train = load_dataset('appliedml2024/text_embedding', split='train')
 textembed_dataset_val = load_dataset('appliedml2024/text_embedding', split='dev')
@@ -79,25 +79,25 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
-        self.fc1 = nn.Linear(2560,1706) # TODO sweep hidden layer num
-        self.lnorm1 = nn.LayerNorm(1706)
+        self.fc1 = nn.Linear(2048,1365) # TODO sweep hidden layer num
+        self.lnorm1 = nn.LayerNorm(1365)
         self.relu1 = nn.ReLU()
-        self.fc2 = nn.Linear(1706,1135)
-        self.lnorm2 = nn.LayerNorm(1135)
+        self.fc2 = nn.Linear(1365,910)
+        self.lnorm2 = nn.LayerNorm(910)
         self.relu2 = nn.ReLU()
-        self.fc3 = nn.Linear(1135,757)
-        self.lnorm3 = nn.LayerNorm(757)
+        self.fc3 = nn.Linear(910,607)
+        self.lnorm3 = nn.LayerNorm(607)
         self.relu3 = nn.ReLU()
-        self.fc4 = nn.Linear(757,505)
-        self.lnorm4 = nn.LayerNorm(505)
+        self.fc4 = nn.Linear(607,405)
+        self.lnorm4 = nn.LayerNorm(405)
         self.relu4 = nn.ReLU()
-        self.fc5 = nn.Linear(505,336)
-        self.lnorm5 = nn.LayerNorm(336)
+        self.fc5 = nn.Linear(405,270)
+        self.lnorm5 = nn.LayerNorm(270)
         self.relu5 = nn.ReLU()
-        self.fc6 = nn.Linear(336,224)
-        self.lnorm6 = nn.LayerNorm(224)
+        self.fc6 = nn.Linear(270,180)
+        self.lnorm6 = nn.LayerNorm(180)
         self.relu6 = nn.ReLU()
-        self.fc7 = nn.Linear(224,1)
+        self.fc7 = nn.Linear(180,1)
         ### END CODE ###
 
     def forward(self, inp):
