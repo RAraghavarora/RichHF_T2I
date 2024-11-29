@@ -7,10 +7,10 @@ from torch.autograd import Variable
 from torchmetrics.regression import MeanSquaredError, R2Score
 from scipy.stats import pearsonr, spearmanr
 
-batch_size = 10
-num_epochs = 50
+batch_size = 32
+num_epochs = 50000
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 rhf_dataset_train = load_dataset('RAraghavarora/RichHumanFeedback', split='train')
 rhf_dataset_val = load_dataset('RAraghavarora/RichHumanFeedback', split='dev')
@@ -128,9 +128,14 @@ model = MLP().to(device)
 
 criterion = torch.nn.MSELoss() 
 optimizer = torch.optim.SGD(model.parameters(), lr = 0.01)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 
 print("starting training")
 # Training the Model
+
+best_loss = 1000
+patience = 100
+epochs_no_improve = 0
 for epoch in range(0,num_epochs):
     model.train()
     for i, (vectors, scores) in enumerate(train_loader):
@@ -144,19 +149,22 @@ for epoch in range(0,num_epochs):
         optimizer.step()
 
 
-        if (i + 1) % 100 == 0:
-            print('Epoch: [% d/% d], Step: [% d/% d], Loss: %.4f'
-                    % (epoch + 1, num_epochs, i + 1,
-                       len(train_dataset) // batch_size, loss.data.item()))
+        # if (i + 1) % 100 == 0:
+        #     print('Epoch: [% d/% d], Step: [% d/% d], Loss: %.4f'
+        #             % (epoch + 1, num_epochs, i + 1,
+        #                len(train_dataset) // batch_size, loss.data.item()))
 
 
     model.eval()
     y_list = torch.Tensor()
     y_pred_list = torch.Tensor()
-    for i, (vectors, scores) in enumerate(test_loader):
+
+    for i, (vectors, scores) in enumerate(val_loader):
         vectors = Variable(vectors).to(device)
         scores = scores.to(device)
         y_pred = model(vectors)
+        loss = criterion(y_pred, scores)
+        scheduler.step(loss)
         scores = torch.Tensor.cpu(scores)
         y_pred = torch.Tensor.cpu(y_pred)
         if i == 0:
@@ -178,3 +186,46 @@ for epoch in range(0,num_epochs):
     spearman = spearmanr(y_pred_list, y_list)
     print('Loss: %.4f, R2: %.4f, Pearson: %s, Spearman: %s'
                     % (eval_loss, eval_r2, str(pearson), str(spearman)))
+
+    # Check for improvement
+    if eval_loss < best_loss:
+        best_loss = eval_loss
+        epochs_no_improve = 0
+        best_model_state = model.state_dict()  # Save the best model state
+    elif epoch > 500:
+        epochs_no_improve += 1
+
+    # Early stopping condition
+    if epochs_no_improve >= patience:
+        print(f"Early stopping at epoch {epoch+1}")
+        model.load_state_dict(best_model_state)  # Restore the best model
+        break
+
+
+print('testing the model')
+
+for i, (vectors, scores) in enumerate(test_loader):
+    vectors = Variable(vectors).to(device)
+    scores = scores.to(device)
+    y_pred = model(vectors)
+    scores = torch.Tensor.cpu(scores)
+    y_pred = torch.Tensor.cpu(y_pred)
+    if i == 0:
+        y_list = scores
+        y_pred_list = y_pred
+    else:
+        y_list = torch.cat((y_list, scores), dim=0)
+        y_pred_list = torch.cat((y_pred_list, y_pred), dim=0)
+
+y_pred_list = y_pred_list.squeeze()
+
+mean_squared_error = MeanSquaredError()
+eval_loss = mean_squared_error(y_pred_list, y_list)
+r2score = R2Score()
+eval_r2 = r2score(y_pred_list, y_list)
+y_pred_list = y_pred_list.detach().numpy()
+y_list = y_list.numpy()
+pearson = pearsonr(y_pred_list, y_list)
+spearman = spearmanr(y_pred_list, y_list)
+print('Loss: %.4f, R2: %.4f, Pearson: %s, Spearman: %s'
+                % (eval_loss, eval_r2, str(pearson), str(spearman)))

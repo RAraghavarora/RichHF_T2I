@@ -8,9 +8,9 @@ from torchmetrics.regression import MeanSquaredError, R2Score
 from scipy.stats import pearsonr, spearmanr
 
 batch_size = 10
-num_epochs = 50
+num_epochs = 50000
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 rhf_dataset_train = load_dataset('RAraghavarora/RichHumanFeedback', split='train')
 rhf_dataset_val = load_dataset('RAraghavarora/RichHumanFeedback', split='dev')
@@ -77,27 +77,35 @@ train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
+
+def pearsonTensor(x,y):
+    vx = x - torch.mean(x)
+    vy = y - torch.mean(y)
+
+    cost = torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2)))
+    return cost
+
 class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(2304,1536)
         self.lnorm1 = nn.LayerNorm(1536)
-        self.relu1 = nn.ReLU()
+        self.relu1 = nn.Tanh()
         self.fc2 = nn.Linear(1536,1024)
         self.lnorm2 = nn.LayerNorm(1024)
-        self.relu2 = nn.ReLU()
+        self.relu2 = nn.Tanh()
         self.fc3 = nn.Linear(1024,682)
         self.lnorm3 = nn.LayerNorm(682)
-        self.relu3 = nn.ReLU()
+        self.relu3 = nn.Tanh()
         self.fc4 = nn.Linear(682,455)
         self.lnorm4 = nn.LayerNorm(455)
-        self.relu4 = nn.ReLU()
+        self.relu4 = nn.Tanh()
         self.fc5 = nn.Linear(455,303)
         self.lnorm5 = nn.LayerNorm(303)
-        self.relu5 = nn.ReLU()
+        self.relu5 = nn.Tanh()
         self.fc6 = nn.Linear(303,202)
         self.lnorm6 = nn.LayerNorm(202)
-        self.relu6 = nn.ReLU()
+        self.relu6 = nn.Tanh()
         self.fc7 = nn.Linear(202,1)
         ### END CODE ###
 
@@ -127,11 +135,15 @@ class MLP(nn.Module):
 
 model = MLP().to(device)
 
-criterion = torch.nn.MSELoss() 
+#criterion = pearsonr() 
 optimizer = torch.optim.SGD(model.parameters(), lr = 0.01)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 
 print("starting training")
 # Training the Model
+best_loss = 1000
+patience = 100
+epochs_no_improve = 0
 for epoch in range(0,num_epochs):
     model.train()
     for i, (vectors, scores) in enumerate(train_loader):
@@ -140,24 +152,28 @@ for epoch in range(0,num_epochs):
         # Forward + Backward + Optimize
         optimizer.zero_grad()
         outputs = model(vectors)
-        loss = criterion(outputs, scores)
+        loss = pearsonTensor(outputs, scores)
         loss.backward()
         optimizer.step()
 
 
-        if (i + 1) % 100 == 0:
-            print('Epoch: [% d/% d], Step: [% d/% d], Loss: %.4f'
-                    % (epoch + 1, num_epochs, i + 1,
-                       len(train_dataset) // batch_size, loss.data.item()))
+        # if (i + 1) % 100 == 0:
+        #     print('Epoch: [% d/% d], Step: [% d/% d], Loss: %.4f'
+        #             % (epoch + 1, num_epochs, i + 1,
+        #                len(train_dataset) // batch_size, loss.data.item()))
 
 
     model.eval()
     y_list = torch.Tensor()
     y_pred_list = torch.Tensor()
-    for i, (vectors, scores) in enumerate(test_loader):
+
+
+    for i, (vectors, scores) in enumerate(val_loader):
         vectors = Variable(vectors).to(device)
         scores = scores.to(device)
         y_pred = model(vectors)
+        loss = pearsonTensor(y_pred, scores)
+        scheduler.step(loss)
         scores = torch.Tensor.cpu(scores)
         y_pred = torch.Tensor.cpu(y_pred)
         if i == 0:
@@ -179,3 +195,46 @@ for epoch in range(0,num_epochs):
     spearman = spearmanr(y_pred_list, y_list)
     print('Loss: %.4f, R2: %.4f, Pearson: %s, Spearman: %s'
                     % (eval_loss, eval_r2, str(pearson), str(spearman)))
+
+    # Check for improvement
+    if eval_loss < best_loss:
+        best_loss = eval_loss
+        epochs_no_improve = 0
+        best_model_state = model.state_dict()  # Save the best model state
+    elif epoch > 500:
+        epochs_no_improve += 1
+
+    # Early stopping condition
+    if epochs_no_improve >= patience:
+        print(f"Early stopping at epoch {epoch+1}")
+        model.load_state_dict(best_model_state)  # Restore the best model
+        break
+
+
+print('testing the model')
+
+for i, (vectors, scores) in enumerate(test_loader):
+    vectors = Variable(vectors).to(device)
+    scores = scores.to(device)
+    y_pred = model(vectors)
+    scores = torch.Tensor.cpu(scores)
+    y_pred = torch.Tensor.cpu(y_pred)
+    if i == 0:
+        y_list = scores
+        y_pred_list = y_pred
+    else:
+        y_list = torch.cat((y_list, scores), dim=0)
+        y_pred_list = torch.cat((y_pred_list, y_pred), dim=0)
+
+y_pred_list = y_pred_list.squeeze()
+
+mean_squared_error = MeanSquaredError()
+eval_loss = mean_squared_error(y_pred_list, y_list)
+r2score = R2Score()
+eval_r2 = r2score(y_pred_list, y_list)
+y_pred_list = y_pred_list.detach().numpy()
+y_list = y_list.numpy()
+pearson = pearsonr(y_pred_list, y_list)
+spearman = spearmanr(y_pred_list, y_list)
+print('Loss: %.4f, R2: %.4f, Pearson: %s, Spearman: %s'
+                % (eval_loss, eval_r2, str(pearson), str(spearman)))

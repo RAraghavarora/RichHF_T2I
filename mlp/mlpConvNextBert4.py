@@ -8,31 +8,25 @@ from torchmetrics.regression import MeanSquaredError, R2Score
 from scipy.stats import pearsonr, spearmanr
 
 batch_size = 10
-num_epochs = 50000
+num_epochs = 50
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 rhf_dataset_train = load_dataset('RAraghavarora/RichHumanFeedback', split='train')
 rhf_dataset_val = load_dataset('RAraghavarora/RichHumanFeedback', split='dev')
 rhf_dataset_test = load_dataset('RAraghavarora/RichHumanFeedback', split='test')
 
-print('loaded rhf dataset')
-
 convnext_dataset_train = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_train')['features']
 convnext_dataset_val = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_dev')['features']
 convnext_dataset_test = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_test')['features']
-
-print("loaded ConvNext dataset")
 
 textembed_dataset_train = load_dataset('appliedml2024/text_embedding', split='train')
 textembed_dataset_val = load_dataset('appliedml2024/text_embedding', split='dev')
 textembed_dataset_test = load_dataset('appliedml2024/text_embedding', split='test')
 
-bert_dataset_train = textembed_dataset_train['Qwen2_text_embedding']
-bert_dataset_val = textembed_dataset_val['Qwen2_text_embedding']
-bert_dataset_test = textembed_dataset_test['Qwen2_text_embedding']
-
-print('loaded Qwen text embeddings')
+bert_dataset_train = textembed_dataset_train['BERT_text_embedding']
+bert_dataset_val = textembed_dataset_val['BERT_text_embedding']
+bert_dataset_test = textembed_dataset_test['BERT_text_embedding']
 
 rhf_artifact_train = rhf_dataset_train['overall_score']
 rhf_artifact_val = rhf_dataset_val['overall_score']
@@ -57,9 +51,6 @@ for i in range(0,len(rhf_artifact_train)):
         temptest = temptest + bert_dataset_test[i].copy()
         combined_dataset_test.append(temptest)
 
-print('dataset concatenated')
-
-
 
 combined_dataset_train = torch.Tensor(combined_dataset_train)
 combined_dataset_val = torch.Tensor(combined_dataset_val)
@@ -81,47 +72,28 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
-        self.fc1 = nn.Linear(5120,3413) # TODO sweep hidden layer num
-        self.lnorm1 = nn.LayerNorm(3413)
-        self.relu1 = nn.Sigmoid()
-        self.fc2 = nn.Linear(3413,2275)
-        self.lnorm2 = nn.LayerNorm(2275)
-        self.relu2 = nn.Sigmoid()
-        self.fc3 = nn.Linear(2275,1516)
-        self.lnorm3 = nn.LayerNorm(1516)
-        self.relu3 = nn.Sigmoid()
-        self.fc4 = nn.Linear(1516,1010)
-        self.lnorm4 = nn.LayerNorm(1010)
-        self.relu4 = nn.Sigmoid()
-        self.fc5 = nn.Linear(1010,673)
-        self.lnorm5 = nn.LayerNorm(673)
-        self.relu5 = nn.Sigmoid()
-        self.fc6 = nn.Linear(673,449)
-        self.lnorm6 = nn.LayerNorm(449)
-        self.relu6 = nn.Sigmoid()
-        self.fc7 = nn.Linear(449,1)
+        self.fc1 = nn.Linear(2560,1706) # TODO sweep hidden layer num
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Linear(1706,1135)
+        self.relu2 = nn.ReLU()
+        self.fc3 = nn.Linear(1135,757)
+        self.relu3 = nn.ReLU()
+        self.fc4 = nn.Linear(757,505)
+        self.relu4 = nn.ReLU()
+        self.fc5 = nn.Linear(505,1)
         ### END CODE ###
 
     def forward(self, inp):
-        x= self.fc1(inp)
-        x= self.lnorm1(x)
-        x= self.relu1(x)
-        x= self.fc2(x)
-        x= self.lnorm2(x)
-        x= self.relu2(x)
-        x= self.fc3(x)
-        x= self.lnorm3(x)
-        x= self.relu3(x)
-        x= self.fc4(x)
-        x= self.lnorm4(x)
-        x= self.relu4(x)
-        x= self.fc5(x)
-        x= self.lnorm5(x)
-        x= self.relu5(x)
-        x= self.fc6(x)
-        x= self.lnorm6(x)
-        x= self.relu6(x)
-        x= self.fc7(x)
+        x = self.fc1(inp)
+        x = self.relu1(x)
+        x = self.fc2(x)
+        x = self.relu2(x)
+        x = self.fc3(x)
+        x = self.relu3(x)
+        x = self.fc4(x)
+        x = self.relu4(x)
+        x = self.fc5(x)
+
 
         return x
 
@@ -130,13 +102,9 @@ model = MLP().to(device)
 
 criterion = torch.nn.MSELoss() 
 optimizer = torch.optim.SGD(model.parameters(), lr = 0.01)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 
 print("starting training")
 # Training the Model
-best_loss = 1000
-patience = 100
-epochs_no_improve = 0
 for epoch in range(0,num_epochs):
     model.train()
     for i, (vectors, scores) in enumerate(train_loader):
@@ -150,23 +118,19 @@ for epoch in range(0,num_epochs):
         optimizer.step()
 
 
-        # if (i + 1) % 100 == 0:
-        #     print('Epoch: [% d/% d], Step: [% d/% d], Loss: %.4f'
-        #             % (epoch + 1, num_epochs, i + 1,
-        #                len(train_dataset) // batch_size, loss.data.item()))
+        if (i + 1) % 100 == 0:
+            print('Epoch: [% d/% d], Step: [% d/% d], Loss: %.4f'
+                    % (epoch + 1, num_epochs, i + 1,
+                       len(train_dataset) // batch_size, loss.data.item()))
 
 
     model.eval()
     y_list = torch.Tensor()
     y_pred_list = torch.Tensor()
-
-
-    for i, (vectors, scores) in enumerate(val_loader):
+    for i, (vectors, scores) in enumerate(test_loader):
         vectors = Variable(vectors).to(device)
         scores = scores.to(device)
         y_pred = model(vectors)
-        loss = criterion(y_pred, scores)
-        scheduler.step(loss)
         scores = torch.Tensor.cpu(scores)
         y_pred = torch.Tensor.cpu(y_pred)
         if i == 0:
@@ -188,46 +152,3 @@ for epoch in range(0,num_epochs):
     spearman = spearmanr(y_pred_list, y_list)
     print('Loss: %.4f, R2: %.4f, Pearson: %s, Spearman: %s'
                     % (eval_loss, eval_r2, str(pearson), str(spearman)))
-
-    # Check for improvement
-    if eval_loss < best_loss:
-        best_loss = eval_loss
-        epochs_no_improve = 0
-        best_model_state = model.state_dict()  # Save the best model state
-    elif epoch > 500:
-        epochs_no_improve += 1
-
-    # Early stopping condition
-    if epochs_no_improve >= patience:
-        print(f"Early stopping at epoch {epoch+1}")
-        model.load_state_dict(best_model_state)  # Restore the best model
-        break
-
-
-print('testing the model')
-
-for i, (vectors, scores) in enumerate(test_loader):
-    vectors = Variable(vectors).to(device)
-    scores = scores.to(device)
-    y_pred = model(vectors)
-    scores = torch.Tensor.cpu(scores)
-    y_pred = torch.Tensor.cpu(y_pred)
-    if i == 0:
-        y_list = scores
-        y_pred_list = y_pred
-    else:
-        y_list = torch.cat((y_list, scores), dim=0)
-        y_pred_list = torch.cat((y_pred_list, y_pred), dim=0)
-
-y_pred_list = y_pred_list.squeeze()
-
-mean_squared_error = MeanSquaredError()
-eval_loss = mean_squared_error(y_pred_list, y_list)
-r2score = R2Score()
-eval_r2 = r2score(y_pred_list, y_list)
-y_pred_list = y_pred_list.detach().numpy()
-y_list = y_list.numpy()
-pearson = pearsonr(y_pred_list, y_list)
-spearman = spearmanr(y_pred_list, y_list)
-print('Loss: %.4f, R2: %.4f, Pearson: %s, Spearman: %s'
-                % (eval_loss, eval_r2, str(pearson), str(spearman)))
