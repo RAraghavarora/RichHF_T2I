@@ -7,10 +7,20 @@ from torch.autograd import Variable
 from torchmetrics.regression import MeanSquaredError, R2Score
 from scipy.stats import pearsonr, spearmanr
 
-batch_size = 50
+batch_size = 10
 num_epochs = 5000
 
 device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cpu")
+
+# change loss func to plcc
+# number epochs?
+# optimizer
+# learning rate (with lr scheduler)
+# make the other combination files
+# layernorm
+# activation function, hidden node #s
+# 
 
 rhf_dataset_train = load_dataset('RAraghavarora/RichHumanFeedback', split='train')
 rhf_dataset_val = load_dataset('RAraghavarora/RichHumanFeedback', split='dev')
@@ -80,32 +90,44 @@ class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(5120,3413) # TODO sweep hidden layer num
+        self.lnorm1 = nn.LayerNorm(3413)
         self.relu1 = nn.ReLU()
         self.fc2 = nn.Linear(3413,2275)
+        self.lnorm2 = nn.LayerNorm(2275)
         self.relu2 = nn.ReLU()
         self.fc3 = nn.Linear(2275,1516)
+        self.lnorm3 = nn.LayerNorm(1516)
         self.relu3 = nn.ReLU()
         self.fc4 = nn.Linear(1516,1010)
+        self.lnorm4 = nn.LayerNorm(1010)
         self.relu4 = nn.ReLU()
         self.fc5 = nn.Linear(1010,673)
+        self.lnorm5 = nn.LayerNorm(673)
         self.relu5 = nn.ReLU()
         self.fc6 = nn.Linear(673,449)
+        self.lnorm6 = nn.LayerNorm(449)
         self.relu6 = nn.ReLU()
         self.fc7 = nn.Linear(449,1)
         ### END CODE ###
 
     def forward(self, inp):
         x = self.fc1(inp)
+        x = self.lnorm1(x)
         x = self.relu1(x)
         x = self.fc2(x)
+        x = self.lnorm2(x)
         x = self.relu2(x)
         x = self.fc3(x)
+        x = self.lnorm3(x)
         x = self.relu3(x)
         x = self.fc4(x)
+        x = self.lnorm4(x)
         x = self.relu4(x)
         x = self.fc5(x)
+        x = self.lnorm5(x)
         x = self.relu5(x)
         x = self.fc6(x)
+        x = self.lnorm6(x)
         x = self.relu6(x)
         x = self.fc7(x)
 

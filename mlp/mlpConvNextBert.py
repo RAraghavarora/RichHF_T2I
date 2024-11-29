@@ -73,14 +73,46 @@ class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(2560,1706) # TODO sweep hidden layer num
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(1706,1)
+        self.lnorm1 = nn.LayerNorm(1706)
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Linear(1706,1135)
+        self.lnorm2 = nn.LayerNorm(1135)
+        self.relu2 = nn.ReLU()
+        self.fc3 = nn.Linear(1135,757)
+        self.lnorm3 = nn.LayerNorm(757)
+        self.relu3 = nn.ReLU()
+        self.fc4 = nn.Linear(757,505)
+        self.lnorm4 = nn.LayerNorm(505)
+        self.relu4 = nn.ReLU()
+        self.fc5 = nn.Linear(505,336)
+        self.lnorm5 = nn.LayerNorm(336)
+        self.relu5 = nn.ReLU()
+        self.fc6 = nn.Linear(336,224)
+        self.lnorm6 = nn.LayerNorm(224)
+        self.relu6 = nn.ReLU()
+        self.fc7 = nn.Linear(224,1)
         ### END CODE ###
 
     def forward(self, inp):
-        x = self.fc1(inp)
-        x = self.relu(x)
-        x = self.fc2(x)
+        x= self.fc1(inp)
+        x= self.lnorm1(x)
+        x= self.relu1(x)
+        x= self.fc2(x)
+        x= self.lnorm2(x)
+        x= self.relu2(x)
+        x= self.fc3(x)
+        x= self.lnorm3(x)
+        x= self.relu3(x)
+        x= self.fc4(x)
+        x= self.lnorm4(x)
+        x= self.relu4(x)
+        x= self.fc5(x)
+        x= self.lnorm5(x)
+        x= self.relu5(x)
+        x= self.fc6(x)
+        x= self.lnorm6(x)
+        x= self.relu6(x)
+        x= self.fc7(x)
 
         return x
 
@@ -90,10 +122,10 @@ model = MLP().to(device)
 criterion = torch.nn.MSELoss() 
 optimizer = torch.optim.SGD(model.parameters(), lr = 0.01)
 
-
 print("starting training")
 # Training the Model
 for epoch in range(0,num_epochs):
+    model.train()
     for i, (vectors, scores) in enumerate(train_loader):
         vectors = Variable(vectors).to(device)
         scores = Variable(scores).to(device)
@@ -103,6 +135,7 @@ for epoch in range(0,num_epochs):
         loss = criterion(outputs, scores)
         loss.backward()
         optimizer.step()
+
 
         if (i + 1) % 100 == 0:
             print('Epoch: [% d/% d], Step: [% d/% d], Loss: %.4f'
