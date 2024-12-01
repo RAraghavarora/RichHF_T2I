@@ -1,0 +1,14 @@
+
+--- Final Results ---
+Best Learning Rate (MSE): 0.00058
+Best Validation Loss: 0.0173
+Best Learning Rate (Validation R2): 0.00058
+Best Validation R2: 0.2930
+Best Validation Pearson: 0.6052
+Best Validation Spearman: 0.5910
+Best Learning Rate (Test R2): 0.00056
+Best Test R2: 0.3121
+Best Test Pearson: 0.5582
+Best Test Spearman: 0.5510
+Test MSE: 0.0189
+Test R2: 0.3039

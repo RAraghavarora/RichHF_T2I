@@ -1,0 +1,5 @@
+Best performer: ConvNext + Qwen, Test PLCC: 0.6404
+2nd: Swin + Qwen: Test PLCC: 0.6255
+3rd: ConvNet + Bret: Test PLCC: 0.6043
+
+Lowest: DiNO + T5 : Test PLCC: 0.4401
