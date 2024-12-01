@@ -1,0 +1,86 @@
+from datasets import load_dataset
+import numpy as np
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.svm import SVR
+from sklearn.metrics import mean_squared_error, r2_score
+from scipy.stats import pearsonr, spearmanr
+
+rhf_dataset_train = load_dataset('RAraghavarora/RichHumanFeedback', split='train')
+rhf_dataset_val = load_dataset('RAraghavarora/RichHumanFeedback', split='dev')
+rhf_dataset_test = load_dataset('RAraghavarora/RichHumanFeedback', split='test')
+
+print('loaded rhf dataset')
+
+convnext_dataset_train = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_train')['features']
+convnext_dataset_val = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_dev')['features']
+convnext_dataset_test = load_dataset('appliedml2024/Vision_ConvNext', split='convnext_test')['features']
+
+print("loaded ConvNext dataset")
+
+textembed_dataset_train = load_dataset('appliedml2024/text_embedding', split='train')
+textembed_dataset_val = load_dataset('appliedml2024/text_embedding', split='dev')
+textembed_dataset_test = load_dataset('appliedml2024/text_embedding', split='test')
+
+bert_dataset_train = textembed_dataset_train['Qwen2_text_embedding']
+bert_dataset_val = textembed_dataset_val['Qwen2_text_embedding']
+bert_dataset_test = textembed_dataset_test['Qwen2_text_embedding']
+
+print('loaded Qwen text embeddings')
+
+rhf_artifact_train = rhf_dataset_train['overall_score']
+rhf_artifact_val = rhf_dataset_val['overall_score']
+rhf_artifact_test = rhf_dataset_test['overall_score']
+
+
+combined_dataset_train = []
+combined_dataset_val = []
+combined_dataset_test = []
+for i in range(0,len(rhf_artifact_train)):
+    temp = convnext_dataset_train[i].copy()
+    temp = temp + bert_dataset_train[i].copy()
+    combined_dataset_train.append(temp)
+
+    if (i < len(rhf_artifact_val)):
+        tempval = convnext_dataset_val[i].copy()
+        tempval = tempval + bert_dataset_val[i].copy()
+        combined_dataset_val.append(tempval)
+
+    if (i < len(rhf_artifact_test)):   
+        temptest = convnext_dataset_test[i].copy()
+        temptest = temptest + bert_dataset_test[i].copy()
+        combined_dataset_test.append(temptest)
+
+print('dataset concatenated')
+
+# Models
+models = {
+    "Linear Regression": LinearRegression(),
+    "Ridge Regression": Ridge(alpha=10.0),
+    "Lasso Regression": Lasso(alpha=0.001),
+    #"Support Vector Regression": SVR(kernel='linear', C=1.0)
+}
+
+# Train and evaluate models
+for model_name, model in models.items():
+    print(f"\n--- {model_name} ---")
+
+    # Train model
+    model.fit(combined_dataset_train, rhf_artifact_train)
+
+    # Evaluate on validation set
+    y_val_pred = model.predict(combined_dataset_val)
+    mse = mean_squared_error(rhf_artifact_val, y_val_pred)
+    r2 = r2_score(rhf_artifact_val, y_val_pred)
+    pearson = pearsonr(rhf_artifact_val, y_val_pred)
+    spearman = spearmanr(rhf_artifact_val, y_val_pred)
+
+    print(f"Validation MSE: {mse:.4f}, R²: {r2:.4f}, Pearson: {pearson[0]:.4f}, Spearman: {spearman.correlation:.4f}")
+
+    # Evaluate on test set
+    y_test_pred = model.predict(combined_dataset_test)
+    test_mse = mean_squared_error(rhf_artifact_test, y_test_pred)
+    test_r2 = r2_score(rhf_artifact_test, y_test_pred)
+    test_pearson = pearsonr(rhf_artifact_test, y_test_pred)
+    test_spearman = spearmanr(rhf_artifact_test, y_test_pred)
+
+    print(f"Test MSE: {test_mse:.4f}, R²: {test_r2:.4f}, Pearson: {test_pearson[0]:.4f}, Spearman: {test_spearman.correlation:.4f}")
