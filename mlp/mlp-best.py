@@ -7,7 +7,7 @@ from torch.autograd import Variable
 from torchmetrics.regression import MeanSquaredError, R2Score
 from scipy.stats import pearsonr, spearmanr
 
-batch_size = 32
+batch_size = 50
 num_epochs = 1000
 
 device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
@@ -72,7 +72,7 @@ train_dataset = TensorDataset(combined_dataset_train, rhf_artifact_train)
 val_dataset = TensorDataset(combined_dataset_val, rhf_artifact_val)
 test_dataset = TensorDataset(combined_dataset_test, rhf_artifact_test)
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
@@ -128,7 +128,6 @@ model = MLP().to(device)
 
 criterion = torch.nn.MSELoss() 
 optimizer = torch.optim.Adam(model.parameters(), lr = 0.0001)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 
 print("starting training")
 
@@ -157,7 +156,6 @@ for epoch in range(0,num_epochs):
         scores = scores.to(device)
         y_pred = model(vectors)
         loss = criterion(y_pred, scores)
-        scheduler.step(loss)
         scores = torch.Tensor.cpu(scores)
         y_pred = torch.Tensor.cpu(y_pred)
         if i == 0:
@@ -222,3 +220,6 @@ pearson = pearsonr(y_pred_list, y_list)
 spearman = spearmanr(y_pred_list, y_list)
 print('Loss: %.4f, R2: %.4f, Pearson: %s, Spearman: %s'
                 % (eval_loss, eval_r2, str(pearson), str(spearman)))
+
+
+torch.save(model.state_dict(), './mlpcnbert.pth')
